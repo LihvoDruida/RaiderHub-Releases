@@ -61,7 +61,7 @@ jobs:
           echo "TELEGRAM_SENT_ZIP=true" >> $GITHUB_ENV
 
       - name: Telegram Notification (надсилання посилання, якщо не вдалося ZIP або це Pre-release)
-        if: env.SKIP_TELEGRAM_ZIP == 'true' || env.TELEGRAM_SENT_ZIP != 'true' || env.RELEASE_IS_PRERELEASE == 'true'
+        if: env.SKIP_TELEGRAM_ZIP == 'true' || env.TELEGRAM_SENT_ZIP != 'true'
         run: |
           RELEASE_STATUS="Release"
           if [ "$RELEASE_IS_PRERELEASE" == "true" ]; then
@@ -74,7 +74,6 @@ jobs:
             -d disable_web_page_preview=true
 
       - name: Discord Notification
-        if: secrets.DISCORD_WEBHOOK_URL != ''
         run: |
           RELEASE_STATUS="Release"
           if [ "$RELEASE_IS_PRERELEASE" == "true" ]; then
