@@ -50,8 +50,8 @@ jobs:
         if: ${{ env.SKIP_TELEGRAM_ZIP != 'true' && env.ZIP_FILE != '' }}
         run: |
           RELEASE_STATUS="Pre-release"
-          MESSAGE="**Новий реліз RaiderHub: $RELEASE_NAME ($RELEASE_STATUS)**\n\n"
-          MESSAGE+="**Тег:** \`$RELEASE_TAG\`\n\n"
+          MESSAGE="**Новий реліз RaiderHub: ($RELEASE_STATUS)**\n\n"
+          MESSAGE+="**Версія:** \`Dev $RELEASE_TAG\`\n\n"
           MESSAGE+="**Зміни:**\n$RELEASE_BODY\n\n"
           MESSAGE+="**[🔗 Посилання на реліз]($RELEASE_URL)**"
           
@@ -68,8 +68,8 @@ jobs:
       - name: Discord Notification
         run: |
           RELEASE_STATUS="Pre-release"
-          MESSAGE="**Новий реліз RaiderHub: $RELEASE_NAME ($RELEASE_STATUS)**\n\n"
-          MESSAGE+="**Тег:** \`$RELEASE_TAG\`\n\n"
+          MESSAGE="**Новий реліз RaiderHub: ($RELEASE_STATUS)**\n\n"
+          MESSAGE+="**Версія:** \`Dev $RELEASE_TAG\`\n\n"
           MESSAGE+="**Зміни:**\n$RELEASE_BODY\n\n"
           MESSAGE+="**[🔗 Посилання на реліз]($RELEASE_URL)**"
           curl -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" "${{ secrets.DISCORD_WEBHOOK_URL }}"
