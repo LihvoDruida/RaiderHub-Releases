@@ -11,99 +11,78 @@ jobs:
       - name: Get Release Information
         id: get_release_info
         run: |
-          RELEASE_TAG="${{ github.event.release.tag_name }}"
-          RELEASE_NAME="${{ github.event.release.name }}"
-          RELEASE_IS_PRERELEASE="${{ github.event.release.prerelease }}"
-          RELEASE_URL="${{ github.event.release.html_url }}"
-          RELEASE_BODY="${{ github.event.release.body }}"
-          REPOSITORY_OWNER="${{ github.event.repository.owner.login }}"
-          REPOSITORY_NAME="${{ github.event.repository.name }}"
-          RELEASE_ID="${{ github.event.release.id }}"
-
-          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
-          echo "RELEASE_NAME=$RELEASE_NAME" >> $GITHUB_OUTPUT
-          echo "RELEASE_IS_PRERELEASE=$RELEASE_IS_PRERELEASE" >> $GITHUB_OUTPUT
-          echo "RELEASE_URL=$RELEASE_URL" >> $GITHUB_OUTPUT
-          echo "RELEASE_BODY=$RELEASE_BODY" >> $GITHUB_OUTPUT
-          echo "REPOSITORY_OWNER=$REPOSITORY_OWNER" >> $GITHUB_OUTPUT
-          echo "REPOSITORY_NAME=$REPOSITORY_NAME" >> $GITHUB_OUTPUT
-          echo "RELEASE_ID=$RELEASE_ID" >> $GITHUB_OUTPUT
+          echo "RELEASE_TAG=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+          echo "RELEASE_NAME=${{ github.event.release.name }}" >> $GITHUB_ENV
+          echo "RELEASE_IS_PRERELEASE=${{ github.event.release.prerelease }}" >> $GITHUB_ENV
+          echo "RELEASE_URL=${{ github.event.release.html_url }}" >> $GITHUB_ENV
+          echo "RELEASE_BODY=${{ github.event.release.body }}" >> $GITHUB_ENV
+          echo "REPOSITORY_OWNER=${{ github.repository_owner }}" >> $GITHUB_ENV
+          echo "REPOSITORY_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
+          echo "RELEASE_ID=${{ github.event.release.id }}" >> $GITHUB_ENV
 
       - name: Download Release Asset
         id: download_asset
         run: |
-          GITHUB_API_URL="https://api.github.com/repos/${{ steps.get_release_info.outputs.REPOSITORY_OWNER }}/${{ steps.get_release_info.outputs.REPOSITORY_NAME }}/releases/${{ steps.get_release_info.outputs.RELEASE_ID }}/assets"
+          GITHUB_API_URL="https://api.github.com/repos/${{ env.REPOSITORY_OWNER }}/${{ env.REPOSITORY_NAME }}/releases/${{ env.RELEASE_ID }}/assets"
           RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$GITHUB_API_URL")
-          APK_ASSET=$(echo "$RESPONSE" | jq -r '.[] | select(.name | endswith(".apk"))')
-          if [ -n "$APK_ASSET" ]; then
-            ASSET_URL=$(echo "$APK_ASSET" | jq -r '.browser_download_url')
-            ASSET_NAME=$(echo "$APK_ASSET" | jq -r '.name')
-            echo "ASSET_URL=$ASSET_URL" >> $GITHUB_OUTPUT
-            echo "ASSET_NAME=$ASSET_NAME" >> $GITHUB_OUTPUT
-            curl -LO "$ASSET_URL" -o "$ASSET_NAME"
+          APK_ASSET=$(echo "$RESPONSE" | jq -r '.[] | select(.name | endswith(".apk")) | {name: .name, url: .browser_download_url}')
+          ASSET_URL=$(echo "$APK_ASSET" | jq -r '.url')
+          ASSET_NAME=$(echo "$APK_ASSET" | jq -r '.name')
+          
+          if [ "$ASSET_URL" != "null" ]; then
+            echo "ASSET_URL=$ASSET_URL" >> $GITHUB_ENV
+            echo "ASSET_NAME=$ASSET_NAME" >> $GITHUB_ENV
+            curl -L -o "$ASSET_NAME" "$ASSET_URL"
           else
             echo "No APK asset found in this release."
             echo "SKIP_TELEGRAM_ZIP=true" >> $GITHUB_ENV
           fi
 
       - name: Zip Downloaded Asset
-        if: env.SKIP_TELEGRAM_ZIP != 'true' && steps.download_asset.outputs.ASSET_NAME
-        id: zip_asset
+        if: env.SKIP_TELEGRAM_ZIP != 'true' && env.ASSET_NAME
         run: |
-          ASSET_NAME="${{ steps.download_asset.outputs.ASSET_NAME }}"
           ZIP_FILE="${ASSET_NAME%.apk}.zip"
           zip "$ZIP_FILE" "$ASSET_NAME"
-          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_OUTPUT
+          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
 
       - name: Telegram File Attachment (надсилання ZIP)
-        if: ${{ secrets.TG_BOT_TOKEN && secrets.TG_CHAT_ID }} && env.SKIP_TELEGRAM_ZIP != 'true' && steps.download_asset.outputs.ASSET_NAME && steps.zip_asset.outputs.ZIP_FILE
-        id: telegram_notification_zip
+        if: env.SKIP_TELEGRAM_ZIP != 'true' && env.ZIP_FILE
         run: |
-          set -e
           RELEASE_STATUS="Release"
-          if ${{ steps.get_release_info.outputs.RELEASE_IS_PRERELEASE }}; then
+          if [ "$RELEASE_IS_PRERELEASE" == "true" ]; then
             RELEASE_STATUS="Pre-release"
           fi
-          ZIP_FILE="${{ steps.zip_asset.outputs.ZIP_FILE }}"
-          CAPTION="Новий реліз RaiderHub: ${{ steps.get_release_info.outputs.RELEASE_NAME }} (${RELEASE_STATUS})"
+          CAPTION="Новий реліз RaiderHub: $RELEASE_NAME ($RELEASE_STATUS)"
           curl -v "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendDocument" \
             -F chat_id=${{ secrets.TG_CHAT_ID }} \
-            -F message_thread_id="${{ secrets.TG_CHAT_THREAD_ID }}" \
             -F document="@$ZIP_FILE" \
             -F caption="$CAPTION" \
             -F disable_notification=true || exit 1
-          echo "TELEGRAM_SENT_ZIP=true" >> $GITHUB_OUTPUT
-        env:
-          ZIP_FILE: ${{ steps.zip_asset.outputs.ZIP_FILE }}
+          echo "TELEGRAM_SENT_ZIP=true" >> $GITHUB_ENV
 
       - name: Telegram Notification (надсилання посилання, якщо не вдалося ZIP або це Pre-release)
-        if: ${{ secrets.TG_BOT_TOKEN && secrets.TG_CHAT_ID }} && (env.SKIP_TELEGRAM_ZIP == 'true' || steps.telegram_notification_zip.outputs.TELEGRAM_SENT_ZIP != 'true' || steps.get_release_info.outputs.RELEASE_IS_PRERELEASE == 'true')
-        id: telegram_notification_link
+        if: env.SKIP_TELEGRAM_ZIP == 'true' || env.TELEGRAM_SENT_ZIP != 'true' || env.RELEASE_IS_PRERELEASE == 'true'
         run: |
           RELEASE_STATUS="Release"
-          if ${{ steps.get_release_info.outputs.RELEASE_IS_PRERELEASE }}; then
+          if [ "$RELEASE_IS_PRERELEASE" == "true" ]; then
             RELEASE_STATUS="Pre-release"
           fi
-          MESSAGE="Новий реліз RaiderHub: ${{ steps.get_release_info.outputs.RELEASE_NAME }} (${RELEASE_STATUS})\n\nТег: ${{ steps.get_release_info.outputs.RELEASE_TAG }}\n\nЗміни:\n${{ steps.get_release_info.outputs.RELEASE_BODY }}\n\nПосилання: ${{ steps.get_release_info.outputs.RELEASE_URL }}"
+          MESSAGE="Новий реліз RaiderHub: $RELEASE_NAME ($RELEASE_STATUS)\n\nТег: $RELEASE_TAG\n\nЗміни:\n$RELEASE_BODY\n\nПосилання: $RELEASE_URL"
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TG_CHAT_ID }}" \
-            -d message_thread_id="${{ secrets.TG_CHAT_THREAD_ID }}" \
             -d text="$MESSAGE" \
             -d disable_web_page_preview=true
-          echo "TELEGRAM_SENT_LINK=true" >> $GITHUB_OUTPUT
 
       - name: Discord Notification
         if: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           RELEASE_STATUS="Release"
-          if ${{ steps.get_release_info.outputs.RELEASE_IS_PRERELEASE }}; then
+          if [ "$RELEASE_IS_PRERELEASE" == "true" ]; then
             RELEASE_STATUS="Pre-release"
           fi
-          MESSAGE="Новий реліз RaiderHub: ${{ steps.get_release_info.outputs.RELEASE_NAME }} (${RELEASE_STATUS})\n\nТег: ${{ steps.get_release_info.outputs.RELEASE_TAG }}\n\nЗміни:\n${{ steps.get_release_info.outputs.RELEASE_BODY }}\n\nПосилання: ${{ steps.get_release_info.outputs.RELEASE_URL }}"
-          curl -H "Content-Type: application/json" -X POST -d '{
-            "content": "'"$MESSAGE"'"
-          }' ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MESSAGE="Новий реліз RaiderHub: $RELEASE_NAME ($RELEASE_STATUS)\n\nТег: $RELEASE_TAG\n\nЗміни:\n$RELEASE_BODY\n\nПосилання: $RELEASE_URL"
+          curl -H "Content-Type: application/json" -X POST -d '{"content": "'"$MESSAGE"'"}' ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       - name: Clean Up Downloaded Asset
-        if: steps.download_asset.outputs.ASSET_NAME
-        run: rm -f "${{ steps.download_asset.outputs.ASSET_NAME }}" "${{ steps.download_asset.outputs.ASSET_NAME%.apk }}.zip"
+        if: env.ASSET_NAME
+        run: rm -f "$ASSET_NAME" "${ASSET_NAME%.apk}.zip"
