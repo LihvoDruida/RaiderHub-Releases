@@ -16,32 +16,46 @@ jobs:
           RELEASE_IS_PRERELEASE="${{ github.event.release.prerelease }}"
           RELEASE_URL="${{ github.event.release.html_url }}"
           RELEASE_BODY="${{ github.event.release.body }}"
+          REPOSITORY_OWNER="${{ github.event.repository.owner.login }}"
+          REPOSITORY_NAME="${{ github.event.repository.name }}"
+          RELEASE_ID="${{ github.event.release.id }}"
 
           echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
           echo "RELEASE_NAME=$RELEASE_NAME" >> $GITHUB_OUTPUT
           echo "RELEASE_IS_PRERELEASE=$RELEASE_IS_PRERELEASE" >> $GITHUB_OUTPUT
           echo "RELEASE_URL=$RELEASE_URL" >> $GITHUB_OUTPUT
           echo "RELEASE_BODY=$RELEASE_BODY" >> $GITHUB_OUTPUT
+          echo "REPOSITORY_OWNER=$REPOSITORY_OWNER" >> $GITHUB_OUTPUT
+          echo "REPOSITORY_NAME=$REPOSITORY_NAME" >> $GITHUB_OUTPUT
+          echo "RELEASE_ID=$RELEASE_ID" >> $GITHUB_OUTPUT
 
       - name: Download Release Asset
         id: download_asset
         run: |
-          GITHUB_API_URL="https://api.github.com/repos/${{ github.event.repository.owner.login }}/${{ github.event.repository.name }}/releases/${{ github.event.release.id }}/assets"
-          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.RELEASE_REPO_TOKEN }}" "$GITHUB_API_URL")
-          ASSET_URL=$(echo "$RESPONSE" | jq -r '.[].browser_download_url' | grep ".apk") # Потрібно зробити точніший вибір асету
-          ASSET_NAME=$(echo "$ASSET_URL" | sed -e 's/.*\/\(.*\)/\1/')
-          echo "ASSET_URL=$ASSET_URL" >> $GITHUB_OUTPUT
-          echo "ASSET_NAME=$ASSET_NAME" >> $GITHUB_OUTPUT
-          curl -LO "$ASSET_URL"
+          GITHUB_API_URL="https://api.github.com/repos/${{ steps.get_release_info.outputs.REPOSITORY_OWNER }}/${{ steps.get_release_info.outputs.REPOSITORY_NAME }}/releases/${{ steps.get_release_info.outputs.RELEASE_ID }}/assets"
+          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$GITHUB_API_URL")
+          APK_ASSET=$(echo "$RESPONSE" | jq -r '.[] | select(.name | endswith(".apk"))')
+          if [ -n "$APK_ASSET" ]; then
+            ASSET_URL=$(echo "$APK_ASSET" | jq -r '.browser_download_url')
+            ASSET_NAME=$(echo "$APK_ASSET" | jq -r '.name')
+            echo "ASSET_URL=$ASSET_URL" >> $GITHUB_OUTPUT
+            echo "ASSET_NAME=$ASSET_NAME" >> $GITHUB_OUTPUT
+            curl -LO "$ASSET_URL" -o "$ASSET_NAME"
+          else
+            echo "No APK asset found in this release."
+            echo "SKIP_TELEGRAM_ZIP=true" >> $GITHUB_ENV
+          fi
 
       - name: Zip Downloaded Asset
+        if: env.SKIP_TELEGRAM_ZIP != 'true' && steps.download_asset.outputs.ASSET_NAME
         run: |
           ASSET_NAME="${{ steps.download_asset.outputs.ASSET_NAME }}"
           ZIP_FILE="${ASSET_NAME%.apk}.zip"
           zip "$ZIP_FILE" "$ASSET_NAME"
+          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_OUTPUT
 
-      - name: Telegram File Attachment (надсилання ZIP)
-        if: ${{ secrets.TG_BOT_TOKEN && secrets.TG_CHAT_ID }}
+      - name: Telegram Notification (надсилання ZIP)
+        if: ${{ secrets.TG_BOT_TOKEN && secrets.TG_CHAT_ID }} && env.SKIP_TELEGRAM_ZIP != 'true' && steps.download_asset.outputs.ASSET_NAME && steps.zip_downloaded_asset.outputs.ZIP_FILE
         id: telegram_notification
         run: |
           set -e
@@ -49,25 +63,20 @@ jobs:
           if ${{ steps.get_release_info.outputs.RELEASE_IS_PRERELEASE }}; then
             RELEASE_STATUS="Pre-release"
           fi
-          ZIP_FILE="${{ steps.download_asset.outputs.ASSET_NAME }}"
-          ZIP_FILE="${ZIP_FILE%.apk}.zip" # Correct way to remove extension
-          if [ -f "$ZIP_FILE" ]; then
-            CAPTION="Новий реліз RaiderHub: ${{ steps.get_release_info.outputs.RELEASE_NAME }} (${RELEASE_STATUS})"
-            curl -v "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendDocument" \
-              -F chat_id=${{ secrets.TG_CHAT_ID }} \
-              -F message_thread_id="${{ secrets.TG_CHAT_THREAD_ID }}" \
-              -F document="@$ZIP_FILE" \
-              -F caption="$CAPTION" \
-              -F disable_notification=true || exit 1
-            echo "TELEGRAM_SENT=true" >> $GITHUB_OUTPUT
-          else
-            echo "ZIP file not found, skipping Telegram ZIP attachment."
-          fi
+          ZIP_FILE="${{ steps.zip_downloaded_asset.outputs.ZIP_FILE }}"
+          CAPTION="Новий реліз RaiderHub: ${{ steps.get_release_info.outputs.RELEASE_NAME }} (${RELEASE_STATUS})"
+          curl -v "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendDocument" \
+            -F chat_id=${{ secrets.TG_CHAT_ID }} \
+            -F message_thread_id="${{ secrets.TG_CHAT_THREAD_ID }}" \
+            -F document="@$ZIP_FILE" \
+            -F caption="$CAPTION" \
+            -F disable_notification=true || exit 1
+          echo "TELEGRAM_SENT=true" >> $GITHUB_OUTPUT
         env:
           ZIP_FILE: ${{ steps.zip_downloaded_asset.outputs.ZIP_FILE }}
 
-      - name: Telegram Notification (надсилання посилання, якщо не вдалося ZIP)
-        if: ${{ secrets.TG_BOT_TOKEN && secrets.TG_CHAT_ID }} && steps.telegram_notification.outputs.TELEGRAM_SENT != 'true'
+      - name: Telegram Notification (надсилання посилання, якщо не вдалося ZIP або це Pre-release)
+        if: ${{ secrets.TG_BOT_TOKEN && secrets.TG_CHAT_ID }} && (env.SKIP_TELEGRAM_ZIP == 'true' || steps.telegram_notification.outputs.TELEGRAM_SENT != 'true' || steps.get_release_info.outputs.RELEASE_IS_PRERELEASE == 'true')
         run: |
           RELEASE_STATUS="Release"
           if ${{ steps.get_release_info.outputs.RELEASE_IS_PRERELEASE }}; then
@@ -91,3 +100,7 @@ jobs:
           curl -H "Content-Type: application/json" -X POST -d '{
             "content": "'"$MESSAGE"'"
           }' ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Clean Up Downloaded Asset
+        if: steps.download_asset.outputs.ASSET_NAME
+        run: rm -f "${{ steps.download_asset.outputs.ASSET_NAME }}" "${{ steps.download_asset.outputs.ASSET_NAME%.apk }}.zip"
