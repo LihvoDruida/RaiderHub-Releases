@@ -12,7 +12,7 @@ jobs:
         id: get_release_info
         run: |
           RELEASE_BODY=$(echo "${{ github.event.release.body }}" | tr '\n' ' ')
-          
+
           echo "RELEASE_TAG=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "RELEASE_NAME=${{ github.event.release.name }}" >> $GITHUB_ENV
           echo "RELEASE_IS_PRERELEASE=${{ github.event.release.prerelease }}" >> $GITHUB_ENV
@@ -21,18 +21,49 @@ jobs:
           echo "REPOSITORY_OWNER=${{ github.repository_owner }}" >> $GITHUB_ENV
           echo "REPOSITORY_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
 
-      - name: Telegram Notification
+      - name: Download Release Asset
+        id: download_asset
+        run: |
+          GITHUB_API_URL="https://api.github.com/repos/${{ env.REPOSITORY_OWNER }}/${{ env.REPOSITORY_NAME }}/releases/${{ env.RELEASE_ID }}/assets"
+          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$GITHUB_API_URL")
+          APK_ASSET=$(echo "$RESPONSE" | jq -r '.[] | select(.name | endswith(".apk")) | {name: .name, url: .browser_download_url}')
+          ASSET_URL=$(echo "$APK_ASSET" | jq -r '.url')
+          ASSET_NAME=$(echo "$APK_ASSET" | jq -r '.name')
+
+          if [ "$ASSET_URL" != "null" ]; then
+            echo "ASSET_URL=$ASSET_URL" >> $GITHUB_ENV
+            echo "ASSET_NAME=$ASSET_NAME" >> $GITHUB_ENV
+            curl -L -o "$ASSET_NAME" "$ASSET_URL"
+          else
+            echo "No APK asset found in this release."
+            echo "SKIP_TELEGRAM_ZIP=true" >> $GITHUB_ENV
+          fi
+
+      - name: Zip Downloaded Asset
+        if: ${{ env.SKIP_TELEGRAM_ZIP != 'true' && env.ASSET_NAME != '' }}
+        run: |
+          ZIP_FILE="${ASSET_NAME%.apk}.zip"
+          zip "$ZIP_FILE" "$ASSET_NAME"
+          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
+
+      - name: Telegram File Attachment (надсилання ZIP)
+        if: ${{ env.SKIP_TELEGRAM_ZIP != 'true' && env.ZIP_FILE != '' }}
         run: |
           RELEASE_STATUS="Pre-release"
           MESSAGE="**Новий реліз RaiderHub: $RELEASE_NAME ($RELEASE_STATUS)**\n\n"
           MESSAGE+="**Тег:** \`$RELEASE_TAG\`\n\n"
           MESSAGE+="**Зміни:**\n$RELEASE_BODY\n\n"
           MESSAGE+="**[🔗 Посилання на реліз]($RELEASE_URL)**"
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.TG_CHAT_ID }}" \
-            -d text="$MESSAGE" \
-            -d parse_mode="MarkdownV2" \
-            -d disable_web_page_preview=true
+          
+          # Екрануємо спеціальні символи '(' і ')'
+          MESSAGE="${MESSAGE//(/\\(}"
+          MESSAGE="${MESSAGE//)/\\)}"
+
+          curl -v "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendDocument" \
+            -F chat_id=${{ secrets.TG_CHAT_ID }} \
+            -F document="@$ZIP_FILE" \
+            -F caption="$MESSAGE" \
+            -F disable_notification=true || exit 1
 
       - name: Discord Notification
         run: |
@@ -42,4 +73,5 @@ jobs:
           MESSAGE+="**Зміни:**\n$RELEASE_BODY\n\n"
           MESSAGE+="**[🔗 Посилання на реліз]($RELEASE_URL)**"
           curl -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" "${{ secrets.DISCORD_WEBHOOK_URL }}"
+
 
