@@ -11,11 +11,13 @@ jobs:
       - name: Get Release Information
         id: get_release_info
         run: |
+          RELEASE_BODY=$(echo "${{ github.event.release.body }}" | tr '\n' ' ')
+          
           echo "RELEASE_TAG=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "RELEASE_NAME=${{ github.event.release.name }}" >> $GITHUB_ENV
           echo "RELEASE_IS_PRERELEASE=${{ github.event.release.prerelease }}" >> $GITHUB_ENV
           echo "RELEASE_URL=${{ github.event.release.html_url }}" >> $GITHUB_ENV
-          echo "RELEASE_BODY=${{ github.event.release.body }}" >> $GITHUB_ENV
+          echo "RELEASE_BODY=$RELEASE_BODY" >> $GITHUB_ENV
           echo "REPOSITORY_OWNER=${{ github.repository_owner }}" >> $GITHUB_ENV
           echo "REPOSITORY_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
           echo "RELEASE_ID=${{ github.event.release.id }}" >> $GITHUB_ENV
@@ -39,14 +41,14 @@ jobs:
           fi
 
       - name: Zip Downloaded Asset
-        if: env.SKIP_TELEGRAM_ZIP != 'true' && env.ASSET_NAME
+        if: ${{ env.SKIP_TELEGRAM_ZIP != 'true' && env.ASSET_NAME != '' }}
         run: |
           ZIP_FILE="${ASSET_NAME%.apk}.zip"
           zip "$ZIP_FILE" "$ASSET_NAME"
           echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
 
       - name: Telegram File Attachment (надсилання ZIP)
-        if: env.SKIP_TELEGRAM_ZIP != 'true' && env.ZIP_FILE
+        if: ${{ env.SKIP_TELEGRAM_ZIP != 'true' && env.ZIP_FILE != '' }}
         run: |
           RELEASE_STATUS="Release"
           if [ "$RELEASE_IS_PRERELEASE" == "true" ]; then
@@ -61,7 +63,7 @@ jobs:
           echo "TELEGRAM_SENT_ZIP=true" >> $GITHUB_ENV
 
       - name: Telegram Notification (надсилання посилання, якщо не вдалося ZIP або це Pre-release)
-        if: env.SKIP_TELEGRAM_ZIP == 'true' || env.TELEGRAM_SENT_ZIP != 'true'
+        if: ${{ env.SKIP_TELEGRAM_ZIP == 'true' || env.TELEGRAM_SENT_ZIP != 'true' }}
         run: |
           RELEASE_STATUS="Release"
           if [ "$RELEASE_IS_PRERELEASE" == "true" ]; then
@@ -73,15 +75,19 @@ jobs:
             -d text="$MESSAGE" \
             -d disable_web_page_preview=true
 
+      - name: Set Discord Webhook
+        run: echo "DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}" >> $GITHUB_ENV
+
       - name: Discord Notification
+        if: ${{ env.DISCORD_WEBHOOK_URL != '' }}
         run: |
           RELEASE_STATUS="Release"
           if [ "$RELEASE_IS_PRERELEASE" == "true" ]; then
             RELEASE_STATUS="Pre-release"
           fi
           MESSAGE="Новий реліз RaiderHub: $RELEASE_NAME ($RELEASE_STATUS)\n\nТег: $RELEASE_TAG\n\nЗміни:\n$RELEASE_BODY\n\nПосилання: $RELEASE_URL"
-          curl -H "Content-Type: application/json" -X POST -d '{"content": "'"$MESSAGE"'"}' ${{ secrets.DISCORD_WEBHOOK_URL }}
+          curl -H "Content-Type: application/json" -X POST -d '{"content": "'"$MESSAGE"'"}' "$DISCORD_WEBHOOK_URL"
 
       - name: Clean Up Downloaded Asset
-        if: env.ASSET_NAME
+        if: ${{ env.ASSET_NAME != '' }}
         run: rm -f "$ASSET_NAME" "${ASSET_NAME%.apk}.zip"
