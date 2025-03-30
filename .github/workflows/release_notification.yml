@@ -23,10 +23,7 @@ jobs:
 
       - name: Telegram Notification
         run: |
-          RELEASE_STATUS="Release"
-          if [ "$RELEASE_IS_PRERELEASE" == "true" ]; then
-            RELEASE_STATUS="Pre-release"
-          fi
+          RELEASE_STATUS="Pre-release"
           MESSAGE="**Новий реліз RaiderHub: $RELEASE_NAME ($RELEASE_STATUS)**\n\n"
           MESSAGE+="**Тег:** \`$RELEASE_TAG\`\n\n"
           MESSAGE+="**Зміни:**\n$RELEASE_BODY\n\n"
@@ -38,12 +35,8 @@ jobs:
             -d disable_web_page_preview=true
 
       - name: Discord Notification
-        if: "${{ secrets.DISCORD_WEBHOOK_URL != '' }}"
         run: |
-          RELEASE_STATUS="Release"
-          if [ "$RELEASE_IS_PRERELEASE" == "true" ]; then
-            RELEASE_STATUS="Pre-release"
-          fi
+          RELEASE_STATUS="Pre-release"
           MESSAGE="**Новий реліз RaiderHub: $RELEASE_NAME ($RELEASE_STATUS)**\n\n"
           MESSAGE+="**Тег:** \`$RELEASE_TAG\`\n\n"
           MESSAGE+="**Зміни:**\n$RELEASE_BODY\n\n"
