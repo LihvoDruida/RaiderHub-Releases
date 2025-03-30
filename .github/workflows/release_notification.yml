@@ -62,9 +62,6 @@ jobs:
         id: telegram_notification_link
         run: |
           RELEASE_STATUS="Pre-release"
-          if ${{ steps.get_release_info.outputs.RELEASE_IS_PRERELEASE }}; then
-            RELEASE_STATUS="Pre-release"
-          fi
           MESSAGE_RAW="**Новий реліз RaiderHub (${RELEASE_STATUS})**\n\n"
           MESSAGE_RAW+="**Тег:** \`${{ steps.get_release_info.outputs.RELEASE_TAG }}\`\n\n"
           MESSAGE_RAW+="**Зміни:**\n${{ steps.get_release_info.outputs.RELEASE_BODY }}\n\n"
