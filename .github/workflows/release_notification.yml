@@ -1,0 +1,93 @@
+name: Release Notification
+
+on:
+  release:
+    types: [published, prereleased]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Release Information
+        id: get_release_info
+        run: |
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          RELEASE_NAME="${{ github.event.release.name }}"
+          RELEASE_IS_PRERELEASE="${{ github.event.release.prerelease }}"
+          RELEASE_URL="${{ github.event.release.html_url }}"
+          RELEASE_BODY="${{ github.event.release.body }}"
+
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "RELEASE_NAME=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "RELEASE_IS_PRERELEASE=$RELEASE_IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "RELEASE_URL=$RELEASE_URL" >> $GITHUB_OUTPUT
+          echo "RELEASE_BODY=$RELEASE_BODY" >> $GITHUB_OUTPUT
+
+      - name: Download Release Asset
+        id: download_asset
+        run: |
+          GITHUB_API_URL="https://api.github.com/repos/${{ github.event.repository.owner.login }}/${{ github.event.repository.name }}/releases/${{ github.event.release.id }}/assets"
+          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.RELEASE_REPO_TOKEN }}" "$GITHUB_API_URL")
+          ASSET_URL=$(echo "$RESPONSE" | jq -r '.[].browser_download_url' | grep ".apk") # Потрібно зробити точніший вибір асету
+          ASSET_NAME=$(echo "$ASSET_URL" | sed -e 's/.*\/\(.*\)/\1/')
+          echo "ASSET_URL=$ASSET_URL" >> $GITHUB_OUTPUT
+          echo "ASSET_NAME=$ASSET_NAME" >> $GITHUB_OUTPUT
+          curl -LO "$ASSET_URL"
+
+      - name: Zip Downloaded Asset
+        run: |
+          ASSET_NAME="${{ steps.download_asset.outputs.ASSET_NAME }}"
+          ZIP_FILE="${ASSET_NAME%.apk}.zip"
+          zip "$ZIP_FILE" "$ASSET_NAME"
+
+      - name: Telegram File Attachment (надсилання ZIP)
+        if: ${{ secrets.TG_BOT_TOKEN && secrets.TG_CHAT_ID }}
+        id: telegram_notification
+        run: |
+          set -e
+          RELEASE_STATUS="Release"
+          if ${{ steps.get_release_info.outputs.RELEASE_IS_PRERELEASE }}; then
+            RELEASE_STATUS="Pre-release"
+          fi
+          ZIP_FILE="${{ steps.download_asset.outputs.ASSET_NAME }}"
+          ZIP_FILE="${ZIP_FILE%.apk}.zip" # Correct way to remove extension
+          if [ -f "$ZIP_FILE" ]; then
+            CAPTION="Новий реліз RaiderHub: ${{ steps.get_release_info.outputs.RELEASE_NAME }} (${RELEASE_STATUS})"
+            curl -v "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendDocument" \
+              -F chat_id=${{ secrets.TG_CHAT_ID }} \
+              -F message_thread_id="${{ secrets.TG_CHAT_THREAD_ID }}" \
+              -F document="@$ZIP_FILE" \
+              -F caption="$CAPTION" \
+              -F disable_notification=true || exit 1
+            echo "TELEGRAM_SENT=true" >> $GITHUB_OUTPUT
+          else
+            echo "ZIP file not found, skipping Telegram ZIP attachment."
+          fi
+        env:
+          ZIP_FILE: ${{ steps.zip_downloaded_asset.outputs.ZIP_FILE }}
+
+      - name: Telegram Notification (надсилання посилання, якщо не вдалося ZIP)
+        if: ${{ secrets.TG_BOT_TOKEN && secrets.TG_CHAT_ID }} && steps.telegram_notification.outputs.TELEGRAM_SENT != 'true'
+        run: |
+          RELEASE_STATUS="Release"
+          if ${{ steps.get_release_info.outputs.RELEASE_IS_PRERELEASE }}; then
+            RELEASE_STATUS="Pre-release"
+          fi
+          MESSAGE="Новий реліз RaiderHub: ${{ steps.get_release_info.outputs.RELEASE_NAME }} (${RELEASE_STATUS})\n\nТег: ${{ steps.get_release_info.outputs.RELEASE_TAG }}\n\nЗміни:\n${{ steps.get_release_info.outputs.RELEASE_BODY }}\n\nПосилання: ${{ steps.get_release_info.outputs.RELEASE_URL }}"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TG_CHAT_ID }}" \
+            -d message_thread_id="${{ secrets.TG_CHAT_THREAD_ID }}" \
+            -d text="$MESSAGE" \
+            -d disable_web_page_preview=true
+
+      - name: Discord Notification
+        if: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          RELEASE_STATUS="Release"
+          if ${{ steps.get_release_info.outputs.RELEASE_IS_PRERELEASE }}; then
+            RELEASE_STATUS="Pre-release"
+          fi
+          MESSAGE="Новий реліз RaiderHub: ${{ steps.get_release_info.outputs.RELEASE_NAME }} (${RELEASE_STATUS})\n\nТег: ${{ steps.get_release_info.outputs.RELEASE_TAG }}\n\nЗміни:\n${{ steps.get_release_info.outputs.RELEASE_BODY }}\n\nПосилання: ${{ steps.get_release_info.outputs.RELEASE_URL }}"
+          curl -H "Content-Type: application/json" -X POST -d '{
+            "content": "'"$MESSAGE"'"
+          }' ${{ secrets.DISCORD_WEBHOOK_URL }}
