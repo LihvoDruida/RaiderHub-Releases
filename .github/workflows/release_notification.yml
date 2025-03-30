@@ -48,22 +48,23 @@ jobs:
 
       - name: Zip Downloaded Asset
         if: env.SKIP_TELEGRAM_ZIP != 'true' && steps.download_asset.outputs.ASSET_NAME
+        id: zip_asset
         run: |
           ASSET_NAME="${{ steps.download_asset.outputs.ASSET_NAME }}"
           ZIP_FILE="${ASSET_NAME%.apk}.zip"
           zip "$ZIP_FILE" "$ASSET_NAME"
           echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_OUTPUT
 
-      - name: Telegram Notification (надсилання ZIP)
-        if: ${{ secrets.TG_BOT_TOKEN && secrets.TG_CHAT_ID }} && env.SKIP_TELEGRAM_ZIP != 'true' && steps.download_asset.outputs.ASSET_NAME && steps.zip_downloaded_asset.outputs.ZIP_FILE
-        id: telegram_notification
+      - name: Telegram File Attachment (надсилання ZIP)
+        if: ${{ secrets.TG_BOT_TOKEN && secrets.TG_CHAT_ID }} && env.SKIP_TELEGRAM_ZIP != 'true' && steps.download_asset.outputs.ASSET_NAME && steps.zip_asset.outputs.ZIP_FILE
+        id: telegram_notification_zip
         run: |
           set -e
           RELEASE_STATUS="Release"
           if ${{ steps.get_release_info.outputs.RELEASE_IS_PRERELEASE }}; then
             RELEASE_STATUS="Pre-release"
           fi
-          ZIP_FILE="${{ steps.zip_downloaded_asset.outputs.ZIP_FILE }}"
+          ZIP_FILE="${{ steps.zip_asset.outputs.ZIP_FILE }}"
           CAPTION="Новий реліз RaiderHub: ${{ steps.get_release_info.outputs.RELEASE_NAME }} (${RELEASE_STATUS})"
           curl -v "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendDocument" \
             -F chat_id=${{ secrets.TG_CHAT_ID }} \
@@ -71,12 +72,13 @@ jobs:
             -F document="@$ZIP_FILE" \
             -F caption="$CAPTION" \
             -F disable_notification=true || exit 1
-          echo "TELEGRAM_SENT=true" >> $GITHUB_OUTPUT
+          echo "TELEGRAM_SENT_ZIP=true" >> $GITHUB_OUTPUT
         env:
-          ZIP_FILE: ${{ steps.zip_downloaded_asset.outputs.ZIP_FILE }}
+          ZIP_FILE: ${{ steps.zip_asset.outputs.ZIP_FILE }}
 
       - name: Telegram Notification (надсилання посилання, якщо не вдалося ZIP або це Pre-release)
-        if: ${{ secrets.TG_BOT_TOKEN && secrets.TG_CHAT_ID }} && (env.SKIP_TELEGRAM_ZIP == 'true' || steps.telegram_notification.outputs.TELEGRAM_SENT != 'true' || steps.get_release_info.outputs.RELEASE_IS_PRERELEASE == 'true')
+        if: ${{ secrets.TG_BOT_TOKEN && secrets.TG_CHAT_ID }} && (env.SKIP_TELEGRAM_ZIP == 'true' || steps.telegram_notification_zip.outputs.TELEGRAM_SENT_ZIP != 'true' || steps.get_release_info.outputs.RELEASE_IS_PRERELEASE == 'true')
+        id: telegram_notification_link
         run: |
           RELEASE_STATUS="Release"
           if ${{ steps.get_release_info.outputs.RELEASE_IS_PRERELEASE }}; then
@@ -88,6 +90,7 @@ jobs:
             -d message_thread_id="${{ secrets.TG_CHAT_THREAD_ID }}" \
             -d text="$MESSAGE" \
             -d disable_web_page_preview=true
+          echo "TELEGRAM_SENT_LINK=true" >> $GITHUB_OUTPUT
 
       - name: Discord Notification
         if: ${{ secrets.DISCORD_WEBHOOK_URL }}
