@@ -65,7 +65,7 @@ jobs:
           if ${{ steps.get_release_info.outputs.RELEASE_IS_PRERELEASE }}; then
             RELEASE_STATUS="Pre-release"
           fi
-          MESSAGE_RAW="**Новий реліз RaiderHub: ${{ steps.get_release_info.outputs.RELEASE_NAME }} (${RELEASE_STATUS})**\n\n"
+          MESSAGE_RAW="**Новий реліз RaiderHub (${RELEASE_STATUS})**\n\n"
           MESSAGE_RAW+="**Тег:** \`${{ steps.get_release_info.outputs.RELEASE_TAG }}\`\n\n"
           MESSAGE_RAW+="**Зміни:**\n${{ steps.get_release_info.outputs.RELEASE_BODY }}\n\n"
           MESSAGE_RAW+="**[🔗 Посилання на реліз](${{ steps.get_release_info.outputs.RELEASE_URL }})**"
@@ -93,7 +93,7 @@ jobs:
       - name: Discord Notification
         run: |
           RELEASE_STATUS="Pre-release"
-          MESSAGE="**Новий реліз RaiderHub: $RELEASE_NAME ($RELEASE_STATUS)**\n\n"
+          MESSAGE="**Новий реліз RaiderHub ($RELEASE_STATUS)**\n\n"
           MESSAGE+="**Тег:** \`$RELEASE_TAG\`\n\n"
           MESSAGE+="**Зміни:**\n$RELEASE_BODY\n\n"
           MESSAGE+="**[🔗 Посилання на реліз]($RELEASE_URL)**"
