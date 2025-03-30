@@ -67,9 +67,12 @@ jobs:
           MESSAGE_RAW+="**Зміни:**\n${{ steps.get_release_info.outputs.RELEASE_BODY }}\n\n"
           MESSAGE_RAW+="**[🔗 Посилання на реліз](${{ steps.get_release_info.outputs.RELEASE_URL }})**"
 
-          # Escape reserved MarkdownV2 characters
-          MESSAGE=$(echo "$MESSAGE_RAW" | sed -E 's/([_\*\[\]()~`>#+\-=|{}.!])/\\\1/g')
+          # Екранування спеціальних символів MarkdownV2
+          escape_markdown_v2() {
+            echo "$1" | jq -Rr @json | sed 's/^"//' | sed 's/"$//'
+          }
 
+          MESSAGE=$(escape_markdown_v2 "$MESSAGE_RAW")
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TG_CHAT_ID }}" \
