@@ -11,7 +11,11 @@ jobs:
       - name: Get Release Information
         id: get_release_info
         run: |
-          RELEASE_BODY="${{ github.event.release.body }}"
+          RELEASE_BODY=$(cat <<'EOF'
+          ${{ github.event.release.body }}
+          EOF
+          )
+
           echo "RELEASE_ID=${{ github.event.release.id }}" >> $GITHUB_ENV
           echo "RELEASE_TAG=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "RELEASE_NAME=${{ github.event.release.name }}" >> $GITHUB_ENV
