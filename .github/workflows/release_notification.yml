@@ -11,12 +11,7 @@ jobs:
       - name: Get Release Information
         id: get_release_info
         run: |
-          # Використовуємо here-doc для багаторядкового changelog
-          RELEASE_BODY=$(cat <<'EOF'
-${{ github.event.release.body }}
-EOF
-          )
-
+          RELEASE_BODY="${{ github.event.release.body }}"
           echo "RELEASE_ID=${{ github.event.release.id }}" >> $GITHUB_ENV
           echo "RELEASE_TAG=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "RELEASE_NAME=${{ github.event.release.name }}" >> $GITHUB_ENV
@@ -31,18 +26,14 @@ EOF
         run: |
           GITHUB_API_URL="https://api.github.com/repos/${{ env.REPOSITORY_OWNER }}/${{ env.REPOSITORY_NAME }}/releases/${{ env.RELEASE_ID }}/assets"
           RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$GITHUB_API_URL")
-
-          # Перевіряємо, чи API повернуло валідний JSON
           if echo "$RESPONSE" | jq empty 2>/dev/null; then
             echo "GitHub API returned a valid response."
           else
             echo "GitHub API returned an error: $RESPONSE"
             exit 1
           fi
-
           ASSET_URL=$(echo "$RESPONSE" | jq -r '.[] | select(.name | endswith(".apk")) | .browser_download_url')
           ASSET_NAME=$(echo "$RESPONSE" | jq -r '.[] | select(.name | endswith(".apk")) | .name')
-
           if [ -n "$ASSET_URL" ] && [ "$ASSET_URL" != "null" ]; then
             echo "ASSET_URL=$ASSET_URL" >> $GITHUB_ENV
             echo "ASSET_NAME=$ASSET_NAME" >> $GITHUB_ENV
@@ -61,7 +52,7 @@ EOF
             echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
           fi
 
-      - name: Telegram Notification (посилання, якщо не вдалося ZIP або Pre-release)
+      - name: Telegram Notification (надсилання посилання, якщо не вдалося ZIP або це Pre-release)
         if: env.SKIP_TELEGRAM_ZIP != 'true'
         id: telegram_notification_link
         run: |
@@ -70,7 +61,6 @@ EOF
           MESSAGE_RAW+="<b>Тег:</b> <code>${{ env.RELEASE_TAG }}</code>\n\n"
           MESSAGE_RAW+="<b>Зміни:</b>\n${{ env.RELEASE_BODY }}\n\n"
           MESSAGE_RAW+="<a href='${{ env.RELEASE_URL }}'>🔗 Посилання на реліз</a>"
-
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TG_CHAT_ID }}" \
             -d message_thread_id="${{ secrets.TG_CHAT_THREAD_ID }}" \
@@ -94,5 +84,4 @@ EOF
           MESSAGE+="**Збірка:** \`#${{ env.RELEASE_TAG }}\`\n\n"
           MESSAGE+="**Зміни:**\n${{ env.RELEASE_BODY }}\n\n"
           MESSAGE+="**[🔗 Посилання на реліз](${{ env.RELEASE_URL }})**"
-
           curl -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" "${{ secrets.DISCORD_WEBHOOK_URL }}"
