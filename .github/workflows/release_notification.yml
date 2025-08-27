@@ -11,17 +11,17 @@ jobs:
       - name: Get Release Information
         id: get_release_info
         run: |
-          RELEASE_BODY=$(cat <<'EOF'
-          ${{ github.event.release.body }}
-          EOF
-          )
+          # Звичайне присвоєння змінної
+          RELEASE_BODY="${{ github.event.release.body }}"
+
+          # Записуємо багаторядковий текст у $GITHUB_ENV
+          printf 'RELEASE_BODY<<EOF\n%s\nEOF\n' "$RELEASE_BODY" >> $GITHUB_ENV
 
           echo "RELEASE_ID=${{ github.event.release.id }}" >> $GITHUB_ENV
           echo "RELEASE_TAG=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "RELEASE_NAME=${{ github.event.release.name }}" >> $GITHUB_ENV
           echo "RELEASE_IS_PRERELEASE=${{ github.event.release.prerelease }}" >> $GITHUB_ENV
           echo "RELEASE_URL=${{ github.event.release.html_url }}" >> $GITHUB_ENV
-          echo "RELEASE_BODY=$RELEASE_BODY" >> $GITHUB_ENV
           echo "REPOSITORY_OWNER=${{ github.repository_owner }}" >> $GITHUB_ENV
           echo "REPOSITORY_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
 
