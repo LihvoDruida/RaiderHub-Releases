@@ -24,6 +24,7 @@ jobs:
         run: |
           GITHUB_API_URL="https://api.github.com/repos/${{ env.REPOSITORY_OWNER }}/${{ env.REPOSITORY_NAME }}/releases/${{ env.RELEASE_ID }}/assets"
           RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$GITHUB_API_URL")
+
           if echo "$RESPONSE" | jq empty 2>/dev/null; then
             echo "GitHub API returned a valid response."
           else
@@ -52,20 +53,25 @@ jobs:
             echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
           fi
 
-      - name: Telegram Notification (посилання, якщо ZIP не вдалося або Pre-release)
+      - name: Telegram Notification
         if: env.SKIP_TELEGRAM_ZIP != 'true'
-        id: telegram_notification_link
         run: |
           RELEASE_STATUS="Pre-release"
-          MESSAGE_RAW="<b>Новий реліз RaiderHub (${RELEASE_STATUS})</b>\n\n"
-          MESSAGE_RAW+="<b>Тег:</b> <code>${{ env.RELEASE_TAG }}</code>\n\n"
-          MESSAGE_RAW+="<b>Зміни:</b>\n${{ github.event.release.body }}\n\n"
-          MESSAGE_RAW+="<a href='${{ env.RELEASE_URL }}'>🔗 Посилання на реліз</a>"
+          cat <<EOF > telegram_message.txt
+          <b>Новий реліз RaiderHub (${RELEASE_STATUS})</b>
+
+          <b>Тег:</b> <code>${RELEASE_TAG}</code>
+
+          <b>Зміни:</b>
+          ${{ github.event.release.body }}
+
+          <a href='${RELEASE_URL}'>🔗 Посилання на реліз</a>
+          EOF
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TG_CHAT_ID }}" \
             -d message_thread_id="${{ secrets.TG_CHAT_THREAD_ID }}" \
-            -d text="$MESSAGE_RAW" \
+            -d text="$(<telegram_message.txt)" \
             -d parse_mode="HTML" \
             -d disable_web_page_preview=true
 
@@ -82,12 +88,16 @@ jobs:
       - name: Discord Notification
         run: |
           RELEASE_STATUS="Pre-release"
-          MESSAGE="**Новий реліз RaiderHub ($RELEASE_STATUS)**\n\n"
-          MESSAGE+="**Збірка:** \`#${{ env.RELEASE_TAG }}\`\n\n"
-          MESSAGE+="**Зміни:**\n${{ github.event.release.body }}\n\n"
-          MESSAGE+="**[🔗 Посилання на реліз](${{ env.RELEASE_URL }})**"
+          cat <<EOF > discord_message.json
+          {
+            "content": "**Новий реліз RaiderHub (${RELEASE_STATUS})**\n\n" \
+             "**Збірка:** \`#${RELEASE_TAG}\`\n\n" \
+             "**Зміни:**\n${{ github.event.release.body }}\n\n" \
+             "**[🔗 Посилання на реліз](${RELEASE_URL})**"
+          }
+          EOF
 
           curl -H "Content-Type: application/json" \
-            -X POST \
-            -d "{\"content\": \"$MESSAGE\"}" \
-            "${{ secrets.DISCORD_WEBHOOK_URL }}"
+               -X POST \
+               -d @discord_message.json \
+               "${{ secrets.DISCORD_WEBHOOK_URL }}"
