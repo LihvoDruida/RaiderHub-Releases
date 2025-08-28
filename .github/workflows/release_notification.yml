@@ -11,11 +11,6 @@ jobs:
       - name: Get Release Information
         id: get_release_info
         run: |
-          cat <<'EOF' >> $GITHUB_ENV
-          RELEASE_BODY<<EOF
-          ${{ github.event.release.body }}
-          EOF
-          EOF
           echo "RELEASE_ID=${{ github.event.release.id }}" >> $GITHUB_ENV
           echo "RELEASE_TAG=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "RELEASE_NAME=${{ github.event.release.name }}" >> $GITHUB_ENV
@@ -64,7 +59,7 @@ jobs:
           RELEASE_STATUS="Pre-release"
           MESSAGE_RAW="<b>Новий реліз RaiderHub (${RELEASE_STATUS})</b>\n\n"
           MESSAGE_RAW+="<b>Тег:</b> <code>${{ env.RELEASE_TAG }}</code>\n\n"
-          MESSAGE_RAW+="<b>Зміни:</b>\n${RELEASE_BODY}\n\n"
+          MESSAGE_RAW+="<b>Зміни:</b>\n${{ github.event.release.body }}\n\n"
           MESSAGE_RAW+="<a href='${{ env.RELEASE_URL }}'>🔗 Посилання на реліз</a>"
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
@@ -89,7 +84,7 @@ jobs:
           RELEASE_STATUS="Pre-release"
           MESSAGE="**Новий реліз RaiderHub ($RELEASE_STATUS)**\n\n"
           MESSAGE+="**Збірка:** \`#${{ env.RELEASE_TAG }}\`\n\n"
-          MESSAGE+="**Зміни:**\n${RELEASE_BODY}\n\n"
+          MESSAGE+="**Зміни:**\n${{ github.event.release.body }}\n\n"
           MESSAGE+="**[🔗 Посилання на реліз](${{ env.RELEASE_URL }})**"
 
           curl -H "Content-Type: application/json" \
