@@ -11,17 +11,41 @@ jobs:
       - name: Get Release Information
         id: get_release_info
         run: |
-          RAW_BODY="${{ github.event.release.body }}"
+          # Беремо body як є
+          RAW_BODY=$(cat <<'EOF'${{ github.event.release.body }}EOF)
+
+          # 🔹 Чистка від потенційно небезпечних символів:
+          # - видаляємо зворотні лапки ` (бо ламають bash і HTML)
+          # - замінюємо таби на пробіли
+          # - нормалізуємо подвійні лапки
+          CLEAN_BODY=$(echo "${{ github.event.release.body }}" \
+            | tr -d '\r' \
+            | sed 's/`//g' \
+            | sed 's/\t/    /g' \
+            | sed 's/"/\\"/g')
 
           # Escape для Telegram (HTML mode)
-          TELEGRAM_BODY=$(echo "$RAW_BODY" \
+          TELEGRAM_BODY=$(echo "$CLEAN_BODY" \
             | sed 's/&/\&amp;/g' \
             | sed 's/</\&lt;/g' \
             | sed 's/>/\&gt;/g')
 
           # Escape для Discord (через jq, щоб JSON не ламався)
-          DISCORD_BODY=$(jq -Rn --arg v "$RAW_BODY" '$v')
+          DISCORD_BODY=$(jq -Rn --arg v "$CLEAN_BODY" '$v')
           DISCORD_BODY="${DISCORD_BODY:1:${#DISCORD_BODY}-2}"
+
+          {
+            echo "RELEASE_ID=${{ github.event.release.id }}"
+            echo "RELEASE_TAG=${{ github.event.release.tag_name }}"
+            echo "RELEASE_NAME=${{ github.event.release.name }}"
+            echo "RELEASE_IS_PRERELEASE=${{ github.event.release.prerelease }}"
+            echo "RELEASE_URL=${{ github.event.release.html_url }}"
+            echo "REPOSITORY_OWNER=${{ github.repository_owner }}"
+            echo "REPOSITORY_NAME=${{ github.event.repository.name }}"
+            printf 'RELEASE_BODY_TELEGRAM<<EOF\n%s\nEOF\n' "$TELEGRAM_BODY"
+            printf 'RELEASE_BODY_DISCORD<<EOF\n%s\nEOF\n' "$DISCORD_BODY"
+          } >> $GITHUB_ENV
+
 
           {
             echo "RELEASE_ID=${{ github.event.release.id }}"
