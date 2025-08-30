@@ -11,16 +11,14 @@ jobs:
       - name: Get Release Information
         id: get_release_info
         run: |
-          # Беремо body як є
-          read -r -d '' RAW_BODY <<'EOF'
-          ${{ github.event.release.body }}
-          EOF
 
           # 🔹 Чистка від потенційно небезпечних символів:
           # - видаляємо зворотні лапки ` (бо ламають bash і HTML)
           # - замінюємо таби на пробіли
           # - нормалізуємо подвійні лапки
-          CLEAN_BODY=$(echo "${{ github.event.release.body }}" \
+          CLEAN_BODY=$(cat <<'EOF'
+          ${{ github.event.release.body }}
+          EOF \
             | tr -d '\r' \
             | sed 's/`//g' \
             | sed 's/\t/    /g' \
