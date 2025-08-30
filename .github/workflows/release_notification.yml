@@ -15,11 +15,11 @@ jobs:
           # - видаляємо зворотні лапки ` (бо ламають bash і HTML)
           # - замінюємо таби на пробіли
           # - нормалізуємо подвійні лапки
-          CLEAN_RW=$(cat <<'EOF'
+          RAW_BODY=$(cat <<'EOF'
           ${{ github.event.release.body }}
           EOF
           )
-          CLEAN_BODY=$(echo "$CLEAN_RW" \
+          CLEAN_BODY=$(echo "$RAW_BODY" \
             | tr -d '\r' \
             | sed 's/`//g' \
             | sed 's/\t/    /g' \
