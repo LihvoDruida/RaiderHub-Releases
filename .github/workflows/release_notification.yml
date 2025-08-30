@@ -31,9 +31,6 @@ jobs:
             | sed 's/</\&lt;/g' \
             | sed 's/>/\&gt;/g')
 
-          # Escape для Discord (через jq, щоб JSON не ламався)
-          DISCORD_BODY=$(echo "$CLEAN_BODY" | sed 's/`//g')
-
           {
             echo "RELEASE_ID=${{ github.event.release.id }}"
             echo "RELEASE_TAG=${{ github.event.release.tag_name }}"
@@ -114,14 +111,15 @@ jobs:
           # Обробка тіла релізу.
           # Замінюємо зворотні лапки, які можуть ламати розмітку.
           # Зберігаємо оригінальні переноси рядків.
-          DISCORD_BODY_CLEANED=$(echo "${{ github.event.release.body }}" \
+          DISCORD_BODY_CLEANED=$(echo "$RAW_BODY" \
             | tr -d '\r' \
             | sed 's/`//g' \
             | sed 's/\t/    /g' \
             | sed 's/"/\\"/g' \
             | sed 's/&/\&amp;/g' \
             | sed 's/</\&lt;/g' \
-            | sed 's/>/\&gt;/g')
+            | sed 's/>/\&gt;/g' \
+            | sed 's/`//g')
 
           # Формуємо заголовок
           TITLE="Новий реліз RaiderHub ($RELEASE_STATUS)"
