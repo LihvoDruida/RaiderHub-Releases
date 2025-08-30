@@ -32,8 +32,7 @@ jobs:
             | sed 's/>/\&gt;/g')
 
           # Escape для Discord (через jq, щоб JSON не ламався)
-          DISCORD_BODY=$(jq -Rn --arg v "$CLEAN_BODY" '$v')
-          DISCORD_BODY="${DISCORD_BODY:1:${#DISCORD_BODY}-2}"
+          DISCORD_BODY=$(echo "$CLEW_BODY" | sed 's/`//g')
 
           {
             echo "RELEASE_ID=${{ github.event.release.id }}"
