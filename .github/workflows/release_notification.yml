@@ -19,31 +19,23 @@ jobs:
           ${{ github.event.release.body }}
           EOF
           )
+          
           CLEAN_BODY=$(echo "$RAW_BODY" \
             | tr -d '\r' \
             | sed 's/`//g' \
             | sed 's/\t/    /g' \
             | sed 's/"/\\"/g')
 
-          # Escape для Telegram (HTML mode)
           TELEGRAM_BODY=$(echo "$CLEAN_BODY" \
             | sed 's/&/\&amp;/g' \
             | sed 's/</\&lt;/g' \
             | sed 's/>/\&gt;/g')
 
-          # Обробка тіла релізу.
-          # Замінюємо зворотні лапки, які можуть ламати розмітку.
-          # Зберігаємо оригінальні переноси рядків.
-          DISCORD_BODY_CLEANED=$(echo "$RAW_BODY" \
-            | tr -d '\r' \
-            | sed 's/`//g' \
-            | sed 's/\t/    /g' \
-            | sed 's/"/\\"/g' \
+          DISCORD_BODY_CLEANED=$(echo "$CLEAN_BODY" \
             | sed 's/&/\&amp;/g' \
             | sed 's/</\&lt;/g' \
-            | sed 's/>/\&gt;/g' \
-            | sed 's/`//g')
-            
+            | sed 's/>/\&gt;/g')
+
           {
             echo "RELEASE_ID=${{ github.event.release.id }}"
             echo "RELEASE_TAG=${{ github.event.release.tag_name }}"
@@ -53,9 +45,9 @@ jobs:
             echo "REPOSITORY_OWNER=${{ github.repository_owner }}"
             echo "REPOSITORY_NAME=${{ github.event.repository.name }}"
             printf 'RELEASE_BODY_TELEGRAM<<EOF\n%s\nEOF\n' "$TELEGRAM_BODY"
-            printf 'RELEASE_BODY_DISCORD<<EOF\n%s\nEOF\n' "$DISCORD_BODY"
+            printf 'RELEASE_BODY_DISCORD<<EOF\n%s\nEOF\n' "$DISCORD_BODY_CLEANED"
           } >> $GITHUB_ENV
-          
+
       - name: Download Release Asset
         id: download_asset
         run: |
@@ -97,9 +89,9 @@ jobs:
         run: |
           RELEASE_STATUS="Pre-release"
           MESSAGE_RAW="<b>Новий реліз RaiderHub (${RELEASE_STATUS})</b>\n\n"
-          MESSAGE_RAW+="<b>Тег:</b> <code>${{ env.RELEASE_TAG }}</code>\n\n"
-          MESSAGE_RAW+="<b>Зміни:</b>\n${{ env.RELEASE_BODY_TELEGRAM }}\n\n"
-          MESSAGE_RAW+="<a href='${{ env.RELEASE_URL }}'>🔗 Посилання на реліз</a>"
+          MESSAGE_RAW+="<b>Тег:</b> <code>${RELEASE_TAG}</code>\n\n"
+          MESSAGE_RAW+="<b>Зміни:</b>\n$RELEASE_BODY_TELEGRAM\n\n"
+          MESSAGE_RAW+="<a href='${RELEASE_URL}'>🔗 Посилання на реліз</a>"
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TG_CHAT_ID }}" \
@@ -135,19 +127,19 @@ jobs:
           # Створюємо JSON для вебхука з embed-ом.
           # jq автоматично екранує всі символи, зберігаючи переноси рядків.
           JSON_PAYLOAD=$(jq -n \
-            --arg title "$TITLE" \
-            --arg description "$DESCRIPTION_TRUNCATED" \
-            --arg url "${{ env.RELEASE_URL }}" \
-            '{
-              "embeds": [
-                {
-                  "title": $title,
-                  "url": $url,
-                  "description": $description,
-                  "color": 5814783
-                }
-              ]
-            }'
+              --arg title "$TITLE" \
+              --arg description "$DESCRIPTION_TRUNCATED" \
+              --arg url "$RELEASE_URL" \
+              '{
+                "embeds": [
+                  {
+                    "title": $title,
+                    "url": $url,
+                    "description": $description,
+                    "color": 5814783
+                  }
+                ]
+              }'
           )
 
           # Відправляємо JSON-навантаження на Discord.
