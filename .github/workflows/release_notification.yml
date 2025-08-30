@@ -111,11 +111,32 @@ jobs:
       - name: Discord Notification
         run: |
           RELEASE_STATUS="Pre-release"
-          MESSAGE="**Новий реліз RaiderHub ($RELEASE_STATUS)**\n\n"
-          MESSAGE+="**Збірка:** \`#${RELEASE_TAG}\`\n\n"
-          MESSAGE+="**Зміни:**\n${RELEASE_BODY_DISCORD}\n\n"
-          MESSAGE+="**[🔗 Посилання на реліз](${RELEASE_URL})**"
 
-          curl -H "Content-Type: application/json" -X POST \
-            -d "{\"content\": \"$MESSAGE\"}" \
+          # Формуємо заголовок
+          TITLE="Новий реліз RaiderHub ($RELEASE_STATUS)"
+          DESCRIPTION="**Збірка:** \`#${RELEASE_TAG}\`\n\n**Зміни:**\n${RELEASE_BODY_DISCORD}\n\n[🔗 Посилання на реліз](${RELEASE_URL})"
+
+          # Обмежуємо description до 4000 символів (ліміт embed-а)
+          DESCRIPTION=$(echo "$DESCRIPTION" | cut -c1-4000)
+
+          # Створюємо JSON з embed
+          JSON=$(jq -n \
+            --arg title "$TITLE" \
+            --arg description "$DESCRIPTION" \
+            --arg url "${RELEASE_URL}" \
+            '{
+              "embeds": [
+                {
+                  "title": $title,
+                  "url": $url,
+                  "description": $description,
+                  "color": 5814783
+                }
+              ]
+            }'
+          )
+
+          curl -H "Content-Type: application/json" \
+            -X POST \
+            -d "$JSON" \
             "${{ secrets.DISCORD_WEBHOOK_URL }}"
