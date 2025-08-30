@@ -32,7 +32,7 @@ jobs:
             | sed 's/>/\&gt;/g')
 
           # Escape для Discord (через jq, щоб JSON не ламався)
-          DISCORD_BODY=$(echo "$CLEW_BODY" | sed 's/`//g')
+          DISCORD_BODY=$(echo "$CLEAN_BODY" | sed 's/`//g')
 
           {
             echo "RELEASE_ID=${{ github.event.release.id }}"
@@ -111,18 +111,35 @@ jobs:
         run: |
           RELEASE_STATUS="Pre-release"
 
+          # Обробка тіла релізу.
+          # Замінюємо зворотні лапки, які можуть ламати розмітку.
+          # Зберігаємо оригінальні переноси рядків.
+          DISCORD_BODY_CLEANED=$(echo "${{ github.event.release.body }}" \
+            | tr -d '\r' \
+            | sed 's/`//g' \
+            | sed 's/\t/    /g' \
+            | sed 's/"/\\"/g' \
+            | sed 's/&/\&amp;/g' \
+            | sed 's/</\&lt;/g' \
+            | sed 's/>/\&gt;/g')
+
           # Формуємо заголовок
           TITLE="Новий реліз RaiderHub ($RELEASE_STATUS)"
-          DESCRIPTION="**Збірка:** \`#${RELEASE_TAG}\`\n\n**Зміни:**\n${RELEASE_BODY_DISCORD}\n\n[🔗 Посилання на реліз](${RELEASE_URL})"
+          
+          # Формуємо опис, включаючи тег і текст змін.
+          # Важливо, що переноси рядків у змінній DISCORD_BODY_CLEANED
+          # будуть правильно інтерпретовані jq.
+          DESCRIPTION="**Збірка:** \`${{ env.RELEASE_TAG }}\`\n\n**Зміни:**\n${DISCORD_BODY_CLEANED}\n\n[🔗 Посилання на реліз](${{ env.RELEASE_URL }})"
 
-          # Обмежуємо description до 4000 символів (ліміт embed-а)
-          DESCRIPTION=$(echo "$DESCRIPTION" | cut -c1-4000)
+          # Обмежуємо опис до 4000 символів (ліміт Discord embed).
+          DESCRIPTION_TRUNCATED=$(echo "$DESCRIPTION" | cut -c1-4000)
 
-          # Створюємо JSON з embed
-          JSON=$(jq -n \
+          # Створюємо JSON для вебхука з embed-ом.
+          # jq автоматично екранує всі символи, зберігаючи переноси рядків.
+          JSON_PAYLOAD=$(jq -n \
             --arg title "$TITLE" \
-            --arg description "$DESCRIPTION" \
-            --arg url "${RELEASE_URL}" \
+            --arg description "$DESCRIPTION_TRUNCATED" \
+            --arg url "${{ env.RELEASE_URL }}" \
             '{
               "embeds": [
                 {
@@ -135,7 +152,8 @@ jobs:
             }'
           )
 
+          # Відправляємо JSON-навантаження на Discord.
           curl -H "Content-Type: application/json" \
             -X POST \
-            -d "$JSON" \
+            -d "$JSON_PAYLOAD" \
             "${{ secrets.DISCORD_WEBHOOK_URL }}"
